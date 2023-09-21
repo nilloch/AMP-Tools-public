@@ -2,6 +2,7 @@
 
 #include "AMPCore.h"
 #include "hw/HW2.h"
+#include <Eigen/LU>
 
 /// @brief Declare your bug algorithm class here. Note this class derives the bug algorithm class declared in HW2.h
 class MyBugAlgorithm : public amp::BugAlgorithm {
@@ -10,7 +11,7 @@ class MyBugAlgorithm : public amp::BugAlgorithm {
 
         Eigen::Vector2d bugNext;
 
-        double bugStep = 0.05;
+        double bugStep = 0.01;
 
         amp::Polygon currentOb;
 
@@ -25,6 +26,8 @@ class MyBugAlgorithm : public amp::BugAlgorithm {
         bool hit = false;
 
         bool followMode;
+
+        int limit = 50000;
 
         
         // Override and implement the bug algorithm in the plan method. The methods are declared here in the `.h` file
@@ -108,26 +111,26 @@ class MyBugAlgorithm : public amp::BugAlgorithm {
             interP << bugXY(0) + t*(bugNext(0) - bugXY(0)), bugXY(1) + t*(bugNext(1) - bugXY(1));
             return interP;
         }
-        void stepCheck(const amp::Problem2D& problem){
+        void stepCheck(Eigen::Vector2d position, Eigen::Vector2d next, const amp::Problem2D& problem){
             hit = false;
             for(auto Ob : problem.obstacles){
                 if(!hit){
                     for(int j = 0; j < Ob.verticesCCW().size(); j++){
                         if(!hit){
-                            hit = checkHit(Ob,j); //hitPoint set in checkHit function
+                            hit = checkHit(position,next,Ob,j); //hitPoint set in checkHit function
                         }
                     }
                 }
             }
         }
-        bool checkHit(amp::Polygon Ob, int startVert){
+        bool checkHit(Eigen::Vector2d position, Eigen::Vector2d next,amp::Polygon Ob, int startVert){
             int endVert;
             std::vector<Eigen::Vector2d> vertCW = Ob.verticesCW();
             int numV = vertCW.size() - 1;
             (startVert == 0) ? (endVert = numV) : endVert = startVert - 1;
-            double t = getT(bugXY,bugNext,vertCW[startVert],vertCW[endVert]);
-            double u = getU(bugXY,bugNext,vertCW[startVert],vertCW[endVert]);
-            if((bugNext - vertCW[startVert]).norm() < bugStep/2){
+            double t = getT(position,next,vertCW[startVert],vertCW[endVert]);
+            double u = getU(position,next,vertCW[startVert],vertCW[endVert]);
+            if((next - vertCW[startVert]).norm() < bugStep/2){
                 //std::cout << "hitpoint: " << getHit(bugXY,bugNext,t) << std::endl;
                 wallPoint = vertCW[startVert];
                 /*if(!followMode){
@@ -145,7 +148,7 @@ class MyBugAlgorithm : public amp::BugAlgorithm {
             else if(evalTU(t,u)){
                 //std::cout << "t: " << t << " u: " << u << " startVert: " << startVert<< " endVert: " << endVert << " hitpoint: " << getHit(bugXY,bugNext,t) << std::endl;
                 //std::cout << " startVert Vertex: " << vertCW[startVert] << " endVert Vertex: " << vertCW[endVert] << std::endl;
-                wallPoint = getHit(bugXY,bugNext,t);
+                wallPoint = getHit(position,next,t);
                 /*if(!followMode){
                     //qHit = getHit(bugXY,bugNext,t);
                     qHit = getNext(bugXY,problem.q_goal,getAlignDist(false));
@@ -240,13 +243,45 @@ class MyBugAlgorithm : public amp::BugAlgorithm {
             }
             
         }
+        bool checkExitPoint(Eigen::Vector2d position, Eigen::Vector2d next, Eigen::Vector2d exitPoint){
+            //return (position - exitPoint).norm() + (exitPoint - next).norm() == (position - next).norm();
+            double dx = next(0) - position(0);
+            double dy = next(1) - position(1);
+
+            if(dx == 0 && exitPoint(0) == position(0)){
+                
+                bool test1 = (exitPoint(1) >= position(1) && exitPoint(1) <= next(1));
+                bool test2 = (exitPoint(1) <= position(1) && exitPoint(1) >= next(1));
+                //std::cout << "pos: " << position << " exitPoint: " << exitPoint << " next: " << next << " tst1 "<<test1<<" tst2 " << test2 << std::endl;
+                if(test1 || test2){
+                    return true;
+                }
+            }
+            else if(dy == 0 && exitPoint(1) == position(1)){
+                bool test1 = (exitPoint(0) >= position(0) && exitPoint(0) <= next(0));
+                bool test2 = (exitPoint(0) <= position(0) && exitPoint(0) >= next(0));
+                //std::cout << "pos: " << position << " exitPoint: " << exitPoint << " next: " << next << " tst1 "<<test1<<" tst2 " << test2 << std::endl;
+                if(test1 || test2){
+                    return true;
+                }
+            }
+            else{
+                double u = (exitPoint(0) - position(0))/dx;
+                double t = (exitPoint(1) - position(1))/dy;
+                //std::cout << "pos: " << position << " exitPoint: " << exitPoint << " next: " << next << "u : "<< u << " t: " << t << std::endl;
+                if(u == t && (u >= 0 && u <= 1.0)){
+                    return true;
+                }
+            }
+            return false;
+        }
         amp::Path2D followBug1(const amp::Problem2D& problem, amp::Path2D path){
             int startVert;
             int endVert;
             int stepsAway = 0;
             //move once more toward obstacle edge if able
             bugNext = getNext(bugXY,problem.q_goal,getAlignDist(false));
-            stepCheck(problem);//hit set to false at start of stepCheck
+            stepCheck(bugXY,bugNext,problem);//hit set to false at start of stepCheck
             if(!hit){
                 path.waypoints.push_back(bugNext);
                 bugXY = bugNext;
@@ -265,7 +300,7 @@ class MyBugAlgorithm : public amp::BugAlgorithm {
                     //std::cout << " Headed to vertex " << endVert << " With start vert: "<< startVert << std::endl;
                     //step toward nearest clockwise vertex on obstacle
                     bugNext = getNextFollow(bugXY,currentOb.verticesCCW()[startVert],currentOb.verticesCCW()[endVert],2*bugStep);
-                    stepCheck(problem); //hit set to false at start of stepCheck
+                    stepCheck(bugXY,bugNext,problem); //hit set to false at start of stepCheck
                     if(!hit)
                     {
                         bugNext = getNextFollow(bugXY,currentOb.verticesCCW()[startVert],currentOb.verticesCCW()[endVert],bugStep);
@@ -286,52 +321,78 @@ class MyBugAlgorithm : public amp::BugAlgorithm {
                             double theta0 = atan2(bugXY(1) - currentOb.verticesCCW()[endVert](1), bugXY(0) - currentOb.verticesCCW()[endVert](0)) - M_PI/2;
                             double thetaEnd = theta0 + M_PI/2;
                             //Check that taking the corner is safe
-                            bugNext = getNextFollow(bugXY,currentOb.verticesCCW()[startVert],currentOb.verticesCCW()[endVert], 2*bugStep);
-                            stepCheck(problem); //hit set to false at start of stepCheck
-                            int endVertTemp;
-                            (endVert == 0) ? (endVertTemp = currentOb.verticesCCW().size() - 1) : endVertTemp = endVert - 1;
-                            bugNext = getNextFollow(bugNext,currentOb.verticesCCW()[endVert],currentOb.verticesCCW()[endVertTemp], 2*bugStep);
-                            stepCheck(problem);
-                            //Take smooth corner
+                            bugNext = getNextFollow(bugXY,currentOb.verticesCCW()[startVert],currentOb.verticesCCW()[endVert], getAlignDist(true));
+                            stepCheck(bugXY,bugNext,problem);
                             if(!hit){
-                                for(double  theta = thetaEnd; theta >= theta0; theta = theta - abs(M_PI - abs(phi))/15){
+                                //path.waypoints.push_back(bugNext);
+                                //bugXY = bugNext;
+                                bugNext = getNextFollow(bugXY,currentOb.verticesCCW()[startVert],currentOb.verticesCCW()[endVert], 2*bugStep);
+                                //std::cout << "startVert: " << currentOb.verticesCCW()[startVert] << " endVert: " << currentOb.verticesCCW()[endVert] <<
+                                //" bugNext: " << bugNext << std::endl;
+                                stepCheck(bugXY,bugNext,problem); //hit set to false at start of stepCheck
+                                if(!hit){
+                                    int endVertTemp;
+                                    (endVert == 0) ? (endVertTemp = currentOb.verticesCCW().size() - 1) : endVertTemp = endVert - 1;
+                                    Eigen::Vector2d bugNextTemp = getNextFollow(bugNext,currentOb.verticesCCW()[endVert],currentOb.verticesCCW()[endVertTemp], 2*bugStep);
+                                    stepCheck(bugNext,bugNextTemp,problem);
+                                    //Take smooth corner
                                     if(!hit){
-                                        bugNext = getNextCorner(bugXY, currentOb.verticesCCW()[endVert], theta);
-                                        stepCheck(problem);
-                                        path.waypoints.push_back(bugNext);
-                                        bugXY = bugNext;
-                                        checkLeavePoint(bugXY, problem.q_goal);
-                                        if(!followMode && (bugXY - exitPoint).norm() < 1.05*bugStep && stepsAway > 2){
-                                            //std::cout << "hit leave point on corner, bugXY: "<< bugXY << std::endl;
-                                            hit = true; //Indicates we've hit the leave point
+                                        //std::cout << "starting cornering! at " << bugXY << std::endl;
+                                        for(double  theta = thetaEnd; theta >= theta0; theta = theta - abs(M_PI - abs(phi))/15){
+                                            if(!hit){
+                                                if(!(theta == theta0 + abs(M_PI - abs(phi))/15)){
+                                                    bugNext = getNextCorner(bugXY, currentOb.verticesCCW()[endVert], theta - abs(M_PI - abs(phi))/15);
+                                                    stepCheck(bugXY,bugNext,problem);
+                                                    if(!hit){
+                                                        bugNext = getNextCorner(bugXY, currentOb.verticesCCW()[endVert], theta);
+                                                    }
+                                                }
+                                                else{
+                                                    bugNext = getNextCorner(bugXY, currentOb.verticesCCW()[endVert], theta);
+                                                }
+                                                path.waypoints.push_back(bugNext);
+                                                bugXY = bugNext;
+                                                checkLeavePoint(bugXY, problem.q_goal);
+                                                if(!followMode && (bugXY - exitPoint).norm() < 1.05*bugStep && stepsAway > 2){
+                                                    //std::cout << "hit leave point on corner, bugXY: "<< bugXY << std::endl;
+                                                    hit = true; //Indicates we've hit the leave point
+                                                }
+                                            }
+                                            else{
+                                                // hit wall while cornering
+                                                if(followMode){
+                                                    /*std::cout << "Error: hit wall while cornering!" << std::endl;
+                                                    path.waypoints.push_back(problem.q_goal);
+                                                    return path;*/
+                                                    hit = true;
+                                                }
+                                            }
                                         }
+                                        // update 'wall starts from vertex' to wall segment end vertex
+                                        checkLeavePoint(bugXY, problem.q_goal);
+                                        vertIdx = endVert;
                                     }
                                     else{
-                                        // hit wall while cornering
-                                        if(followMode){
-                                            std::cout << "Error: hit wall while cornering!" << std::endl;
-                                            path.waypoints.push_back(problem.q_goal);
-                                            return path;
-                                        }
+                                        std::cout << "Error: hit wall before cornering! bugXY: "<< bugXY <<
+                                        " bugNext: "<< bugNext << " endVert: " << currentOb.verticesCCW()[endVert] 
+                                        << " endVertTemp: " << currentOb.verticesCCW()[endVertTemp] << std::endl;
                                     }
                                 }
-                                // update 'wall starts from vertex' to wall segment end vertex
-                                checkLeavePoint(bugXY, problem.q_goal);
-                                vertIdx = endVert;
                             }
                         }
                         // Failsafe
-                        /*
-                        if(abs(bugXY(1)) > 30 || abs(bugXY(0)) > 30 || stepsAway > 5000){
+                        
+                        if(abs(bugXY(1)) > 50 || abs(bugXY(0)) > 50 || stepsAway > 50000){
+                        //if(stepsAway > 20000){
                             std::cout << "Bug has left the working area!" << " bugxy: " << bugXY << std::endl;
                             path.waypoints.push_back(problem.q_goal);
                             return path;
-                        }*/
+                        }
                     }
                     else{
                         //move once more toward obstacle wall if able
                         bugNext = getNext(bugXY,wallPoint,getAlignDist(false));
-                        stepCheck(problem);//hit set to false at start of stepCheck
+                        stepCheck(bugXY,bugNext,problem);//hit set to false at start of stepCheck
                         if(!hit){
                             path.waypoints.push_back(bugNext);
                             bugXY = bugNext;
@@ -339,17 +400,19 @@ class MyBugAlgorithm : public amp::BugAlgorithm {
                         }
                     }
                     // Check if bug has hit original hit point
-                    if(followMode && (bugXY - exitPoint).norm() < 1.05*bugStep && stepsAway > 2){
+                    if(followMode && (bugXY - exitPoint).norm() < 1.5*bugStep && stepsAway > 2){
                         // Update point of loop exit to leave point
                         std::cout << "Now retracing to leave point because a) " << (bugXY - exitPoint).norm() << " and b) " << stepsAway << std::endl;
                         std::cout << "Leave point score:  " << qLScore << " and leavePoint: "<< qLeave << std::endl;
+                        path.waypoints.push_back(exitPoint);
+                        bugXY = exitPoint;
                         exitPoint = qLeave;
                         followMode = false;
                     }
                     else if(!followMode && (bugXY - problem.q_goal).norm() <= 1.05*qLScore && stepsAway > 2){
                         //std::cout << "DEBUG: Hit leave point! qLScore: " << qLScore << " norm: " << (bugXY - problem.q_goal).norm() << " bugXY: " << bugXY << " qLeave: " << qLeave << std::endl;
                     }
-                }while((bugXY - exitPoint).norm() >= 1.05*bugStep || stepsAway < 2);
+                }while((bugXY - exitPoint).norm() >= 1.5*bugStep || stepsAway < 2);
                 std::cout << "Now leaving object because a) " << (bugXY - exitPoint).norm() << " and b) " << stepsAway << std::endl;
                 std::cout << "Leave point score:  " << qLScore << " and leavePoint: "<< qLeave << std::endl;
                 // reset leave point score
@@ -362,7 +425,7 @@ class MyBugAlgorithm : public amp::BugAlgorithm {
             int stepsAway = 0;
             //move once more toward obstacle edge if able
             bugNext = getNext(bugXY,problem.q_goal,getAlignDist(false));
-            stepCheck(problem);//hit set to false at start of stepCheck
+            stepCheck(bugXY,bugNext,problem);//hit set to false at start of stepCheck
             if(!hit){
                 path.waypoints.push_back(bugNext);
                 bugXY = bugNext;
@@ -380,7 +443,8 @@ class MyBugAlgorithm : public amp::BugAlgorithm {
                     //std::cout << " Headed to vertex " << endVert << " With start vert: "<< startVert << std::endl;
                     //step toward nearest clockwise vertex on obstacle
                     bugNext = getNextFollow(bugXY,currentOb.verticesCCW()[startVert],currentOb.verticesCCW()[endVert],2*bugStep);
-                    stepCheck(problem); //hit set to false at start of stepCheck
+                    stepCheck(bugXY,bugNext,problem); //hit set to false at start of stepCheck
+                    stepsAway++;
                     if(!hit)
                     {
                         bugNext = getNextFollow(bugXY,currentOb.verticesCCW()[startVert],currentOb.verticesCCW()[endVert],bugStep);
@@ -390,7 +454,7 @@ class MyBugAlgorithm : public amp::BugAlgorithm {
                         }
                         path.waypoints.push_back(bugNext);
                         bugXY = bugNext;
-                        stepsAway++;
+                        //stepsAway++;
 
                         //Check for corner (end of wall line segment)
                         if((bugXY - currentOb.verticesCCW()[endVert]).norm() <= 1.25*bugStep){
@@ -404,17 +468,17 @@ class MyBugAlgorithm : public amp::BugAlgorithm {
                             double thetaEnd = theta0 + M_PI/2;
                             //Check that taking the corner is safe
                             bugNext = getNextFollow(bugXY,currentOb.verticesCCW()[startVert],currentOb.verticesCCW()[endVert], 2*bugStep);
-                            stepCheck(problem); //hit set to false at start of stepCheck
+                            stepCheck(bugXY,bugNext,problem); //hit set to false at start of stepCheck
                             int endVertTemp;
                             (endVert == 0) ? (endVertTemp = currentOb.verticesCCW().size() - 1) : endVertTemp = endVert - 1;
-                            bugNext = getNextFollow(bugNext,currentOb.verticesCCW()[endVert],currentOb.verticesCCW()[endVertTemp], 2*bugStep);
-                            stepCheck(problem);
+                            Eigen::Vector2d bugNextTemp = getNextFollow(bugNext,currentOb.verticesCCW()[endVert],currentOb.verticesCCW()[endVertTemp], 2*bugStep);
+                            stepCheck(bugNext,bugNextTemp,problem);
                             //Take smooth corner
                             if(!hit){
                                 for(double  theta = thetaEnd; theta >= theta0; theta = theta - abs(M_PI - abs(phi))/15){
                                     if(!hit){
                                         bugNext = getNextCorner(bugXY, currentOb.verticesCCW()[endVert], theta);
-                                        stepCheck(problem);
+                                        stepCheck(bugXY,bugNext,problem);
                                         checkMLine(problem.q_init, problem.q_goal);
                                         path.waypoints.push_back(bugNext);
                                         bugXY = bugNext;
@@ -433,17 +497,19 @@ class MyBugAlgorithm : public amp::BugAlgorithm {
                             }
                         }
                         // Failsafe
-                        /*
-                        if(abs(bugXY(1)) > 30 || abs(bugXY(0)) > 30 || stepsAway > 10000){
+                        
+                        if(abs(stepsAway > 50000 || bugXY(1)) > 100 || abs(bugXY(0)) > 100){
+                        //if(stepsAway > 5000){
+                            followMode = false;
                             std::cout << "Bug has left the working area!" << " bugxy: " << bugXY << std::endl;
                             path.waypoints.push_back(problem.q_goal);
                             return path;
-                        }*/
+                        }
                     }
                     else{
                         //move once more toward obstacle wall if able
                         bugNext = getNext(bugXY,wallPoint,getAlignDist(false));
-                        stepCheck(problem);//hit set to false at start of stepCheck
+                        stepCheck(bugXY,bugNext,problem);//hit set to false at start of stepCheck
                         if(!hit){
                             //checkMLine(problem.q_init, problem.q_goal);
                             path.waypoints.push_back(bugNext);
@@ -461,9 +527,155 @@ class MyBugAlgorithm : public amp::BugAlgorithm {
                     }*/
                 }while(followMode);
                 // reset leave point score
+                //std::cout << "exiting follow mode at " << bugXY << std::endl;
+                qLScore = 0;
+                return path;
+        }
+        amp::Path2D followBug3(const amp::Problem2D& problem, amp::Path2D path){
+            int startVert;
+            int endVert;
+            int stepsAway = 0;
+            //move once more toward obstacle edge if able
+            bugNext = getNext(bugXY,problem.q_goal,getAlignDist(false));
+            stepCheck(bugXY,bugNext,problem);//hit set to false at start of stepCheck
+            if(!hit){
+                path.waypoints.push_back(bugNext);
+                bugXY = bugNext;
+                hit = true;
+            }
+            // Set distance from bug to goal at its probable max (initial hit point)
+            checkLeavePoint(bugXY, problem.q_goal);
+            //Switch to boundary following mode
+            followMode = true;
+            // set exit point to initial hit point
+            Eigen::Vector2d exitPoint = bugXY;
+            //std::cout << "exitPoint: " << exitPoint << std::endl;
+            do{
+                    startVert = vertIdx;
+                    (startVert == 0) ? (endVert = currentOb.verticesCCW().size() - 1) : endVert = startVert - 1;
+                    //std::cout << " Headed to vertex " << endVert << " With start vert: "<< startVert << std::endl;
+                    //step toward nearest clockwise vertex on obstacle
+                    bugNext = getNextFollow(bugXY,currentOb.verticesCCW()[startVert],currentOb.verticesCCW()[endVert],2*bugStep);
+                    stepCheck(bugXY,bugNext,problem); //hit set to false at start of stepCheck
+                    if(!hit)
+                    {
+                        bugNext = getNextFollow(bugXY,currentOb.verticesCCW()[startVert],currentOb.verticesCCW()[endVert],bugStep);
+                        path.waypoints.push_back(bugNext);
+                        bugXY = bugNext;
+                        checkLeavePoint(bugXY, problem.q_goal);
+                        stepsAway++;
+                        //std::cout << "Norm to end: " << (bugXY - currentOb.verticesCCW()[endVert]).norm() << std::endl;
+
+                        //Check for corner (end of wall line segment)
+                        if((bugXY - currentOb.verticesCCW()[endVert]).norm() <= 1.25*bugStep){
+                            
+                            bool cornering = true;
+                            Eigen::Vector2d tempXY = bugXY;
+                            int endVertTemp;
+                            do{
+                                //try to step toward corner
+                                bugNext = getNextFollow(tempXY,currentOb.verticesCCW()[startVert],currentOb.verticesCCW()[endVert],bugStep);
+                                stepCheck(tempXY,bugNext,problem);
+                                if(!hit){
+                                    if(checkExitPoint(tempXY,bugNext,exitPoint)){
+                                        std::cout << "Now retracing to leave point because a) " << (bugXY - exitPoint).norm() << " and b) " << stepsAway << std::endl;
+                                        std::cout << "Leave point score:  " << qLScore << " and leavePoint: "<< qLeave << std::endl;
+                                        path.waypoints.push_back(exitPoint);
+                                        bugXY = exitPoint;
+                                        exitPoint = qLeave;
+                                        followMode = false;
+                                        cornering = false;
+                                    }
+                                    else{
+                                        //try turning around corner
+                                        tempXY = bugNext;
+                                        //std::cout << "tempXY: " << tempXY << std::endl;
+                                        (endVert == 0) ? (endVertTemp = currentOb.verticesCCW().size() - 1) : endVertTemp = endVert - 1;
+                                        bugNext = getNextFollow(tempXY,currentOb.verticesCCW()[endVert],currentOb.verticesCCW()[endVertTemp],2*bugStep);
+                                        stepCheck(tempXY,bugNext,problem);
+                                        std::cout << "tempXY:  " << tempXY << " and bugNext: "<< bugNext << std::endl;
+                                        if(!hit){
+                                            if(checkExitPoint(tempXY,bugNext,exitPoint)){
+                                                std::cout << "Here Now retracing to leave point because a) " << (bugXY - exitPoint).norm() << " and b) " << stepsAway << std::endl;
+                                                std::cout << "bugXY:  " << bugXY << " and exitPoint: "<< exitPoint << std::endl;
+                                                std::cout << "tempXY: " << tempXY << std::endl;
+                                                path.waypoints.push_back(tempXY);
+                                                path.waypoints.push_back(exitPoint);
+                                                bugXY = exitPoint;
+                                                exitPoint = qLeave;
+                                                followMode = false;
+                                                cornering = false;
+                                            }
+                                            else{
+                                                std::cout << "final tempXY:  " << tempXY << " and bugNext: "<< bugNext << std::endl;
+                                                path.waypoints.push_back(tempXY);
+                                                path.waypoints.push_back(bugNext);
+                                                bugXY = bugNext;
+                                                //std::cout << " dist to exitpoint: " << (bugXY - exitPoint).norm() << std::endl;
+                                                checkLeavePoint(bugXY, problem.q_goal);
+                                                cornering = false;
+                                                // Check if bug has hit original hit point
+                                            }
+                                        }
+                                        else{
+                                            //path.waypoints.push_back(tempXY);
+                                            //bugXY = tempXY;
+                                            //checkLeavePoint(bugXY, problem.q_goal);
+                                            //cornering = false;
+                                        }
+                                    }
+                                }
+                                
+                            }while(cornering && stepsAway < limit);
+                            // update 'wall starts from vertex' to wall segment end vertex
+                            
+                            checkLeavePoint(bugXY, problem.q_goal);
+                            vertIdx = endVert;
+                            std::cout << "bugXY: " << bugXY << " bugNext: "<< bugNext << " vertIdx " << vertIdx << std::endl;
+
+                                
+                            
+                        }
+                        // Failsafe
+                        
+                        if(abs(bugXY(1)) > 50 || abs(bugXY(0)) > 50 || stepsAway > limit){
+                        //if(stepsAway > 20000){
+                            std::cout << "Bug has left the working area!" << " bugxy: " << bugXY << std::endl;
+                            path.waypoints.push_back(problem.q_goal);
+                            return path;
+                        }
+                    }
+                    else{
+                        //move once more toward obstacle wall if able
+                        bugNext = getNext(bugXY,wallPoint,getAlignDist(false));
+                        stepCheck(bugXY,bugNext,problem);//hit set to false at start of stepCheck
+                        if(!hit){
+                            path.waypoints.push_back(bugNext);
+                            bugXY = bugNext;
+                            hit = true;
+                        }
+                    }
+                    // Check if bug has hit original hit point
+                    if(followMode && (bugXY - exitPoint).norm() < 1.5*bugStep && stepsAway > 2){
+                        // Update point of loop exit to leave point
+                        std::cout << "Now retracing to leave point because a) " << (bugXY - exitPoint).norm() << " and b) " << stepsAway << std::endl;
+                        std::cout << "Leave point score:  " << qLScore << " and leavePoint: "<< qLeave << std::endl;
+                        path.waypoints.push_back(exitPoint);
+                        bugXY = exitPoint;
+                        exitPoint = qLeave;
+                        followMode = false;
+                    }
+                    else if(!followMode && (bugXY - problem.q_goal).norm() <= 1.05*qLScore && stepsAway > 2){
+                        //std::cout << "DEBUG: Hit leave point! qLScore: " << qLScore << " norm: " << (bugXY - problem.q_goal).norm() << " bugXY: " << bugXY << " qLeave: " << qLeave << std::endl;
+                    }
+                }while((bugXY - exitPoint).norm() >= 1.5*bugStep || stepsAway < 2);
+                std::cout << "Now leaving object because a) " << (bugXY - exitPoint).norm() << " and b) " << stepsAway << std::endl;
+                std::cout << "Leave point score:  " << qLScore << " and leavePoint: "<< qLeave << std::endl;
+                // reset leave point score
                 qLScore = 0;
                 return path;
         }
     private:
         // Add any member variables here...
+        
 };
