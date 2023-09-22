@@ -132,7 +132,7 @@ class MyBugAlgorithm : public amp::BugAlgorithm {
             (startVert == 0) ? (endVert = numV) : endVert = startVert - 1;
             double t = getT(position,next,vertCW[startVert],vertCW[endVert]);
             double u = getU(position,next,vertCW[startVert],vertCW[endVert]);
-            if((next - vertCW[startVert]).norm() < bugStep/2){
+            if((next - vertCW[startVert]).norm() < 0.005*bugStep){
                 //std::cout << "hitpoint: " << getHit(bugXY,bugNext,t) << std::endl;
                 wallPoint = vertCW[startVert];
                 /*if(!followMode){
@@ -165,10 +165,10 @@ class MyBugAlgorithm : public amp::BugAlgorithm {
                     endVert = abs(endVert - numV);
                     (startVert > endVert) ? (vertIdx = startVert) : (vertIdx = endVert); 
                 }
-                std::cout << "bugXY: "<< position << "wallPoint: " << wallPoint << std::endl;
+                /*std::cout << "bugXY: "<< position << "wallPoint: " << wallPoint << std::endl;
                 std::cout << "vertIdx: "<< vertIdx << std::endl;
                 std::cout << "current obstacle vertIdx vertex: " << currentOb.verticesCCW()[vertIdx] << std::endl;
-                std::cout << "endVert: "<< endVert <<std::endl;
+                std::cout << "endVert: "<< endVert <<std::endl;*/
                 return true;
             }
             return false;
@@ -317,11 +317,12 @@ class MyBugAlgorithm : public amp::BugAlgorithm {
                         if((bugXY - currentOb.verticesCCW()[endVert]).norm() <= 1.25*bugStep){
                             bool cornering = true;
                             bugNext = getNext(bugXY,currentOb.verticesCCW()[endVert],(bugXY - currentOb.verticesCCW()[endVert]).norm() - 0.1*bugStep);
-                            if(!checkExitPoint(bugXY,bugNext,exitPoint)){
+                            stepCheck(bugXY,bugNext,problem);
+                            if(!checkExitPoint(bugXY,bugNext,exitPoint) && !hit){
                                 
                                 path.waypoints.push_back(bugNext);
                                 bugXY = bugNext;
-                                std::cout << "now at " << bugXY << std::endl;
+                                //std::cout << "now at " << bugXY << std::endl;
                                 Eigen::Vector2d tempXY = bugXY;
                                 int endVertTemp;
                                 Eigen::Vector2d corner = currentOb.verticesCCW()[endVert];
@@ -331,9 +332,9 @@ class MyBugAlgorithm : public amp::BugAlgorithm {
                                     stepCheck(tempXY,bugNext,problem);
                                     if(!hit){
                                         if(checkExitPoint(tempXY,bugNext,exitPoint) || (tempXY - exitPoint).norm() < 1.25*bugStep){
-                                            std::cout << "Here Now retracing to leave point because a) " << (bugXY - exitPoint).norm() << " and b) " << stepsAway << std::endl;
+                                            /*std::cout << "Here Now retracing to leave point because a) " << (bugXY - exitPoint).norm() << " and b) " << stepsAway << std::endl;
                                             std::cout << "bugXY:  " << bugXY << " and exitPoint: "<< exitPoint << std::endl;
-                                            std::cout << "tempXY: " << tempXY << std::endl;
+                                            std::cout << "tempXY: " << tempXY << std::endl;*/
                                             path.waypoints.push_back(tempXY);
                                             path.waypoints.push_back(exitPoint);
                                             bugXY = exitPoint;
@@ -343,7 +344,7 @@ class MyBugAlgorithm : public amp::BugAlgorithm {
                                             vertIdx = endVert;
                                         }
                                         else{
-                                            std::cout << "final tempXY:  " << tempXY << " and bugNext: "<< bugNext << std::endl;
+                                            //std::cout << "final tempXY:  " << tempXY << " and bugNext: "<< bugNext << std::endl;
                                             path.waypoints.push_back(tempXY);
                                             path.waypoints.push_back(bugNext);
                                             bugXY = bugNext;
@@ -357,11 +358,14 @@ class MyBugAlgorithm : public amp::BugAlgorithm {
                                     else{
                                         if((currentOb.verticesCCW()[endVert] - corner).norm() > 0.00001){
                                             // hit new obstacle
-                                            std::cout << "new Obstacle! at " << bugXY << std::endl;
+                                            //std::cout << "new Obstacle! at " << bugXY << std::endl;
+                                            //checkLeavePoint(bugXY, problem.q_goal);
+                                            qLeave = bugXY;
+                                            qLScore = (bugXY - problem.q_goal).norm();
                                             cornering = false;
                                         }
                                         else if((tempXY - currentOb.verticesCCW()[endVert]).norm() > bugStep){
-                                            std::cout << "Missed corner at " << bugXY << " and tempXY " << tempXY << " bugNext: " << bugNext << std::endl;
+                                            //std::cout << "Missed corner at " << bugXY << " and tempXY " << tempXY << " bugNext: " << bugNext << std::endl;
                                             cornering = false;
                                             //kill = true;
                                             //return path;
@@ -374,6 +378,9 @@ class MyBugAlgorithm : public amp::BugAlgorithm {
                                 // update 'wall starts from vertex' to wall segment end vertex
                                 
                             
+                            }
+                            else{
+                                //std::cout << "hit while going to corner at " << bugXY << " and corner " << currentOb.verticesCCW()[endVert] << " bugNext: " << bugNext << std::endl;
                             }
                             
                             /* old loop :))
@@ -464,6 +471,7 @@ class MyBugAlgorithm : public amp::BugAlgorithm {
                         //if(stepsAway > 20000){
                             kill = true;
                             std::cout << "Bug has left the working area!" << " bugxy: " << bugXY << " exitPoint: " << exitPoint << std::endl;
+                            //path.waypoints.push_back(problem.q_init);
                             path.waypoints.push_back(problem.q_goal);
                             return path;
                         }
@@ -481,8 +489,8 @@ class MyBugAlgorithm : public amp::BugAlgorithm {
                     // Check if bug has hit original hit point
                     if(followMode && (bugXY - exitPoint).norm() < 1.5*bugStep && stepsAway > 2){
                         // Update point of loop exit to leave point
-                        std::cout << "Now retracing to leave point because a) " << (bugXY - exitPoint).norm() << " and b) " << stepsAway << std::endl;
-                        std::cout << "Leave point score:  " << qLScore << " and leavePoint: "<< qLeave << std::endl;
+                        //std::cout << "Now retracing to leave point because a) " << (bugXY - exitPoint).norm() << " and b) " << stepsAway << std::endl;
+                        //std::cout << "Leave point score:  " << qLScore << " and leavePoint: "<< qLeave << std::endl;
                         path.waypoints.push_back(exitPoint);
                         bugXY = exitPoint;
                         exitPoint = qLeave;
@@ -491,13 +499,13 @@ class MyBugAlgorithm : public amp::BugAlgorithm {
                     else if(!followMode && (bugXY - problem.q_goal).norm() <= 1.05*qLScore && stepsAway > 2){
                         //std::cout << "DEBUG: Hit leave point! qLScore: " << qLScore << " norm: " << (bugXY - problem.q_goal).norm() << " bugXY: " << bugXY << " qLeave: " << qLeave << std::endl;
                     }
-                    if(stepsAway % 1000 == 0){
-                        std::cout << "stepsAway: " << stepsAway << std::endl;
+                    if(stepsAway % 10000 == 0){
+                        std::cout << "stepsAway: " << stepsAway << " hit?: " << hit << " bugXY: " << bugXY << std::endl;
                     }
                     
                 }while(((bugXY - exitPoint).norm() >= 1.5*bugStep || stepsAway < 2) && stepsAway < limit);
-                std::cout << "Now leaving object because a) " << (bugXY - exitPoint).norm() << " and b) " << stepsAway << std::endl;
-                std::cout << "Leave point score:  " << qLScore << " and leavePoint: "<< qLeave << std::endl;
+                //std::cout << "Now leaving object because a) " << (bugXY - exitPoint).norm() << " and b) " << stepsAway << std::endl;
+                //std::cout << "Leave point score:  " << qLScore << " and leavePoint: "<< qLeave << std::endl;
                 // reset leave point score
                 qLScore = 0;
                 if(stepsAway >= limit){

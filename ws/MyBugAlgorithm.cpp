@@ -33,7 +33,9 @@ amp::Path2D MyBugAlgorithm::plan(const amp::Problem2D& problem) {
                 tempScore = (bugXY - problem.q_goal).norm();
                 path = followBug1(problem, path);
                 //std::cout << "Leaving an object, bugXY: " << bugXY << std::endl;
-                if(path.waypoints.back() == problem.q_goal || (bugXY - problem.q_goal).norm() >= tempScore || kill){
+                if(path.waypoints.back() == problem.q_init || (bugXY - problem.q_goal).norm() >= tempScore || kill){
+                //if(kill){
+                    std::cout << "Killing because: b) " << ((bugXY - problem.q_goal).norm() >= tempScore) << " c) " << kill << std::endl;
                     path.waypoints.push_back(problem.q_goal);
                     return path;
                 }

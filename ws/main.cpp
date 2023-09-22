@@ -48,7 +48,7 @@ int main(int argc, char** argv) {
 
         // Visualize the path and environment
         Visualizer::makeFigure(problem, path);
-    }*/
+    }
 
     // Let's get crazy and generate a random environment and test your algorithm
     amp::Path2D path; // Make empty path, problem, and collision points, as they will be created by generateAndCheck()
@@ -70,9 +70,9 @@ int main(int argc, char** argv) {
         // Visualize the path environment, and any collision points with obstacles
     }while(random_trial_success);
     //Visualizer::makeFigure(random_prob, path, collision_points);
-    Visualizer::showFigures();
+    Visualizer::showFigures();*/
 
-    //HW2::grade(algo, "collin.hudson@colorado.edu", argc, argv);
+    HW2::grade(algo, "collin.hudson@colorado.edu", argc, argv);
 
     return 0;
 }
