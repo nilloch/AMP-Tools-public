@@ -21,6 +21,7 @@ amp::Path2D MyBugAlgorithm::plan(const amp::Problem2D& problem) {
             followMode = false;
             if(bugXY == problem.q_goal){
                 path.waypoints.push_back(problem.q_goal);
+                std::cout << "Success!" << std::endl;
                 return path;
             }
             // make preliminary step
@@ -31,12 +32,13 @@ amp::Path2D MyBugAlgorithm::plan(const amp::Problem2D& problem) {
                 //std::cout << "Hit an object, bugXY: " << bugXY << std::endl;
                 //path = followBug1(problem, path);
                 tempScore = (bugXY - problem.q_goal).norm();
+                kill = false;
                 path = followBug1(problem, path);
                 //std::cout << "Leaving an object, bugXY: " << bugXY << std::endl;
                 if(path.waypoints.back() == problem.q_init || (bugXY - problem.q_goal).norm() >= tempScore || kill){
                 //if(kill){
                     std::cout << "Killing because: b) " << ((bugXY - problem.q_goal).norm() >= tempScore) << " c) " << kill << std::endl;
-                    path.waypoints.push_back(problem.q_goal);
+                    //path.waypoints.push_back(problem.q_goal);
                     return path;
                 }
             }
