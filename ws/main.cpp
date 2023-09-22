@@ -13,6 +13,7 @@ int main(int argc, char** argv) {
 
     /*    Randomly generate the problem     */ 
 
+    amp::RNG::seed(amp::RNG::randiUnbounded());
     // Use WO1 from Exercise 2
     Problem2D problem = HW2::getWorkspace1();
 
@@ -36,7 +37,7 @@ int main(int argc, char** argv) {
     // Declare your algorithm object 
     MyBugAlgorithm algo;
     
-    {
+    /*{
         // Call your algorithm on the problem
         amp::Path2D path = algo.plan(problem);
 
@@ -47,25 +48,31 @@ int main(int argc, char** argv) {
 
         // Visualize the path and environment
         Visualizer::makeFigure(problem, path);
-    }
+    }*/
 
     // Let's get crazy and generate a random environment and test your algorithm
-    {
+    amp::Path2D path; // Make empty path, problem, and collision points, as they will be created by generateAndCheck()
+    amp::Problem2D random_prob; 
+    std::vector<Eigen::Vector2d> collision_points;
+    bool random_trial_success = true;
+    do{
         amp::Path2D path; // Make empty path, problem, and collision points, as they will be created by generateAndCheck()
         amp::Problem2D random_prob; 
         std::vector<Eigen::Vector2d> collision_points;
-        bool random_trial_success = HW2::generateAndCheck(algo, path, random_prob, collision_points);
+        random_trial_success = HW2::generateAndCheck(algo, path, random_prob, collision_points);
         LOG("Found valid solution in random environment: " << (random_trial_success ? "Yes!" : "No :("));
 
         LOG("path length: " << path.length());
+        if(!random_trial_success){
+            Visualizer::makeFigure(random_prob, path, collision_points);
+        }
 
         // Visualize the path environment, and any collision points with obstacles
-        Visualizer::makeFigure(random_prob, path, collision_points);
-    }
-
+    }while(random_trial_success);
+    //Visualizer::makeFigure(random_prob, path, collision_points);
     Visualizer::showFigures();
 
-    HW2::grade(algo, "collin.hudson@colorado.edu", argc, argv);
+    //HW2::grade(algo, "collin.hudson@colorado.edu", argc, argv);
 
     return 0;
 }

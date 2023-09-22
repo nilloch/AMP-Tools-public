@@ -15,7 +15,7 @@ amp::Path2D MyBugAlgorithm::plan(const amp::Problem2D& problem) {
     hit = false;
     vertIdx = 0;
     qLScore = (bugXY - problem.q_goal).norm();
-
+    double tempScore = qLScore;
     while(true){
         while(true){
             followMode = false;
@@ -30,9 +30,11 @@ amp::Path2D MyBugAlgorithm::plan(const amp::Problem2D& problem) {
             if(hit){
                 //std::cout << "Hit an object, bugXY: " << bugXY << std::endl;
                 //path = followBug1(problem, path);
+                tempScore = (bugXY - problem.q_goal).norm();
                 path = followBug1(problem, path);
                 //std::cout << "Leaving an object, bugXY: " << bugXY << std::endl;
-                if(path.waypoints.back() == problem.q_goal){
+                if(path.waypoints.back() == problem.q_goal || (bugXY - problem.q_goal).norm() >= tempScore || kill){
+                    path.waypoints.push_back(problem.q_goal);
                     return path;
                 }
             }
